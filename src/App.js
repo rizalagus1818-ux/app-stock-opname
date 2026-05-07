@@ -8,6 +8,7 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState('scan');
   const [gasUrl, setGasUrl] = useState('');
+  const [masterGasUrl, setMasterGasUrl] = useState('');
   const [location, setLocation] = useState('Gudang Utama');
   const [locationsList, setLocationsList] = useState('Gudang Utama\nKantor Depan\nLantai 2\nGudang Belakang');
   const [condition, setCondition] = useState('Baik');
@@ -24,12 +25,14 @@ export default function App() {
   // Load data dari LocalStorage saat pertama kali dimuat
   useEffect(() => {
     const savedUrl = localStorage.getItem('gasUrl');
+    const savedMasterUrl = localStorage.getItem('masterGasUrl');
     const savedLocation = localStorage.getItem('defaultLocation');
     const savedLocationsList = localStorage.getItem('locationsList');
     const savedMasterData = localStorage.getItem('masterData');
     const savedLogs = localStorage.getItem('opnameLogs');
     
     if (savedUrl) setGasUrl(savedUrl);
+    if (savedMasterUrl) setMasterGasUrl(savedMasterUrl);
     if (savedLocation) setLocation(savedLocation);
     if (savedLocationsList) setLocationsList(savedLocationsList);
     if (savedMasterData) setMasterData(savedMasterData);
@@ -44,6 +47,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gasUrl', gasUrl);
   }, [gasUrl]);
+
+  useEffect(() => {
+    localStorage.setItem('masterGasUrl', masterGasUrl);
+  }, [masterGasUrl]);
 
   useEffect(() => {
     localStorage.setItem('defaultLocation', location);
@@ -129,31 +136,51 @@ export default function App() {
     };
   }, [cameraActive]);
 
-  // Fungsi Tarik Master Data dari Spreadsheet
+  // Fungsi Tarik Master Data dari Spreadsheet (DIPERBARUI DENGAN ERROR HANDLING PINTAR)
   const fetchMasterDataFromSheet = async () => {
-    if (!gasUrl) {
-      alert("Silakan masukkan URL Web App (Google Apps Script) terlebih dahulu di atas.");
+    if (!masterGasUrl) {
+      alert("Silakan masukkan URL Spreadsheet Master Data terlebih dahulu di Pengaturan.");
       return;
     }
     
     setIsFetchingMaster(true);
     try {
-      const res = await fetch(`${gasUrl}?action=getMasterData`);
-      const data = await res.json();
+      // Pastikan format URL aman
+      const separator = masterGasUrl.includes('?') ? '&' : '?';
+      const fetchUrl = `${masterGasUrl}${separator}action=getMasterData`;
+
+      const res = await fetch(fetchUrl);
+      const textData = await res.text(); // Ambil bentuk teks dulu untuk dicek
       
+      let data;
+      try {
+        // Coba jadikan JSON
+        data = JSON.parse(textData);
+      } catch (err) {
+        // Jika gagal jadi JSON, berarti Google mengembalikan Teks/HTML (Error)
+        if (textData.includes("Web App Stock Opname AKTIF")) {
+          throw new Error("SKRIP BELUM DIPERBARUI!\nAnda belum melakukan 'Deployment Baru'. Silakan ke Apps Script > Terapkan > Deployment Baru. Jangan gunakan 'Kelola Deployment'.");
+        } else if (textData.toLowerCase().includes("html") || textData.toLowerCase().includes("sign in")) {
+          throw new Error("AKSES DITOLAK!\nPastikan pada pengaturan Deploy di Apps Script, opsi 'Siapa yang memiliki akses' (Who has access) sudah diatur ke 'Siapa saja' (Anyone).");
+        } else {
+          throw new Error("URL TIDAK VALID ATAU ERROR SERVER.\nRespon: " + textData.substring(0, 80));
+        }
+      }
+      
+      // Jika berhasil jadi JSON, cek apakah error dari Script kita (misal lupa buat sheet)
       if (data.error) {
-        alert("Gagal: " + data.error + "\nPastikan Anda sudah membuat sheet bernama 'MasterAset'.");
+        alert("GAGAL DARI SPREADSHEET:\n" + data.error + "\n\nPastikan Anda sudah membuat tab/sheet baru bernama 'MasterAset' (tanpa spasi).");
       } else if (data.length === 0) {
-        alert("Data kosong. Pastikan sheet 'MasterAset' sudah diisi dengan benar.");
+        alert("DATA KOSONG:\nTab 'MasterAset' ditemukan, tetapi tidak ada data aset di dalamnya.");
       } else {
-        // Konversi JSON dari spreadsheet menjadi format teks
+        // Berhasil!
         const stringFormat = data.map(item => `${item.barcode},${item.description}`).join('\n');
         setMasterData(stringFormat);
-        alert(`Sukses! Berhasil menarik ${data.length} data aset dari Spreadsheet.`);
+        alert(`SUKSES!\nBerhasil menarik ${data.length} data aset dari Spreadsheet ke HP Anda.`);
       }
     } catch (error) {
       console.error(error);
-      alert("Gagal menarik data. Pastikan URL benar, dan Apps Script telah di-Deploy versi terbarunya.");
+      alert(error.message);
     }
     setIsFetchingMaster(false);
   };
@@ -469,23 +496,35 @@ export default function App() {
               <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100 space-y-6">
                 
                 <div>
-                  <h2 className="font-bold text-xl text-gray-800 mb-3 border-b pb-3">Koneksi Spreadsheet</h2>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">URL Web App (Google Apps Script)</label>
+                  <h2 className="font-bold text-xl text-gray-800 mb-3 border-b pb-3">Koneksi Spreadsheet (Simpan Scan)</h2>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">URL Web App (Untuk Menyimpan Hasil Scan)</label>
                   <input 
                     type="url" 
                     value={gasUrl}
                     onChange={(e) => setGasUrl(e.target.value)}
                     placeholder="https://script.google.com/macros/s/..."
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 text-sm"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 text-sm mb-2"
                   />
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Masukkan URL script dari Spreadsheet tempat Anda menampung hasil stock opname.
+                  </p>
                 </div>
 
                 <div>
                   <h2 className="font-bold text-xl text-gray-800 mb-3 border-b pb-3 flex justify-between items-center">
                     Database Master Aset
                   </h2>
-                  <p className="text-sm text-gray-600 mb-3">Tarik seluruh data aset dari Google Spreadsheet ke dalam aplikasi ini agar pendeteksian berjalan lebih cepat tanpa butuh internet saat scan.</p>
+                  <p className="text-sm text-gray-600 mb-3">Tarik seluruh data aset dari Google Spreadsheet terpisah (Master Data) agar pendeteksian berjalan otomatis.</p>
                   
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">URL Web App (Khusus Master Data)</label>
+                  <input 
+                    type="url" 
+                    value={masterGasUrl}
+                    onChange={(e) => setMasterGasUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/..."
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 text-sm mb-4"
+                  />
+
                   <button 
                     onClick={fetchMasterDataFromSheet}
                     disabled={isFetchingMaster}
