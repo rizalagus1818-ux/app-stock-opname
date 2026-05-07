@@ -405,9 +405,7 @@ export default function App() {
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 bg-white"
                       >
                         <option value="Baik">Baik</option>
-                        <option value="Rusak Ringan">Rusak Ringan</option>
-                        <option value="Rusak Berat">Rusak Berat</option>
-                        <option value="Hilang">Hilang</option>
+                        <option value="Rusak">Rusak</option>
                       </select>
                     </div>
                   </div>
